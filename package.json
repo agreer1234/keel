@@ -1,0 +1,16 @@
+{
+  "name": "keel",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-page.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.129.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.143.0"
+  }
+}

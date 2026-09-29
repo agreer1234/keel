@@ -1,0 +1,15 @@
+name = "keel"
+main = "src/index.js"
+compatibility_date = "2026-08-11"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[durable_objects.bindings]]
+name = "KEEL"
+class_name = "KeelStore"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["KeelStore"]

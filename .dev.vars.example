@@ -1,0 +1,2 @@
+# Optional: turns on the AI coach ("New read"). Get a key at https://platform.claude.com
+ANTHROPIC_API_KEY=
