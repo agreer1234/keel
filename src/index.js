@@ -203,6 +203,12 @@ export class KeelStore extends DurableObject {
             const total = (g.tracker.entries || []).reduce((a, e) => a + (+e.sold || 0) - (+e.cost || 0) - (+e.fees || 0), 0);
             row.tracker = { total: Math.round(total * 100) / 100, target: +g.tracker.target };
           }
+          // goals with a show-up target report this week's count
+          if (g.showup && +g.showup.target > 0) {
+            const ws = addDays(date, -((dow(date) + 6) % 7)), set = new Set(g.showup.days || []);
+            let n = 0; for (let i = 0; i < 7; i++) if (set.has(addDays(ws, i))) n++;
+            row.showup = { week: n, target: +g.showup.target };
+          }
           return row;
         }),
     };

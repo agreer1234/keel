@@ -143,6 +143,10 @@ function goalRow(parent, g) {
     text(r, `${fmt(g.tracker.total)} / ${fmt(g.tracker.target)}`, 11, "semibold", g.tracker.total >= g.tracker.target ? STATUS.on.color : INK);
     return;
   }
+  if (g.showup) {
+    text(r, `${g.showup.week}/${g.showup.target} this wk`, 11, "semibold", g.showup.week >= g.showup.target ? STATUS.on.color : INK);
+    return;
+  }
   const st = STATUS[g.status] || STATUS.none;
   text(r, st.label, 11, "semibold", st.color);
 }

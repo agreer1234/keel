@@ -387,6 +387,14 @@ details.method dd { font-size: 15px; }
 .gate-card .field { width: 100%; text-align: left; }
 .gate-card .btn { width: 100%; padding: 13px; font-size: 17px; }
 .gate-icon { border-radius: 18px; box-shadow: 0 8px 24px rgba(0,85,224,.25); }
+/* show-up tracker */
+.shw-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.shw-days button { display: grid; justify-items: center; gap: 4px; border: 0; background: none; padding: 2px 0; font-size: 12px; color: var(--muted); }
+.shw-days button i { width: 32px; height: 32px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--muted) 35%, transparent); display: grid; place-items: center; font-style: normal; font-size: 14px; font-weight: 700; color: #fff; }
+.shw-days button[aria-pressed="true"] i { background: var(--c); border-color: var(--c); }
+.shw-days button.today { color: var(--ink); font-weight: 600; }
+.shw-days button:disabled { opacity: .35; }
+.shw-sub { font-size: 14px; color: var(--muted); }
 /* profit tracker */
 .trk { display: grid; gap: 8px; padding: 14px; border-radius: 16px; background: var(--sunk); }
 .trk-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -569,6 +577,20 @@ details.method dd { font-size: 15px; }
   const trackerTotal = g => (trackerOf(g)?.entries || []).reduce((a, e) => a + saleProfit(e), 0);
   const money = v => { const n = Math.round(v * 100) / 100; const a = Math.abs(n); return (n < 0 ? "−$" : "$") + a.toLocaleString("en-US", { minimumFractionDigits: a % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
   const dollarsIn = t => { const m = String(t || "").match(/\$\s*([\d,]+(?:\.\d+)?)/); return m ? +m[1].replace(/,/g, "") : 0; };
+  // show-up tracker (a goal can count the days you showed up, e.g. the gym 4x a week)
+  const showupOf = g => (g && g.showup && +g.showup.target > 0) ? g.showup : null;
+  const showDays = g => new Set(showupOf(g)?.days || []);
+  const weekCount = (g, ws) => { const set = showDays(g); let n = 0; for (let i = 0; i < 7; i++) if (set.has(addDays(ws, i))) n++; return n; };
+  // weeks in a row that hit the target; the current week only counts once it's hit
+  const weekStreak = g => {
+    const tr = showupOf(g); if (!tr) return 0;
+    let ws = weekStart(today()), n = 0;
+    if (weekCount(g, ws) < tr.target) ws = addDays(ws, -7);
+    while (weekCount(g, ws) >= tr.target && n < 520) { n++; ws = addDays(ws, -7); }
+    return n;
+  };
+  const perWeekIn = t => { const m = String(t || "").match(/(\d)\s*(?:x|×|times|days|sessions)?\s*(?:a|per|\/)\s*w(?:ee)?k/i); return m && +m[1] >= 1 && +m[1] <= 7 ? +m[1] : 0; };
+  const sessionsIn = t => { const m = String(t || "").match(/(\d+)\s*(?:sessions|workouts|visits|days)\b(?!\s*(?:a|per)\s*w)/i); return m ? +m[1] : 0; };
   const hrs = m => { const h = m / 60; return (h >= 10 ? Math.round(h) : Math.round(h * 10) / 10) + "h"; };
 
   // ---------- state ----------
@@ -946,7 +968,7 @@ details.method dd { font-size: 15px; }
       return `<article class="card goal-card"${modeOf(g) === "pause" ? ' style="opacity:.75"' : ""}>
         <div class="goal-top">${swatch(g)}<h3>${esc(g.title)}${g.measure ? `<span class="measure">${esc(g.measure)}</span>` : ""}</h3>${goalPill(g)}</div>
         <div class="goal-meta"><span class="tag mode">${MODE_LABEL[modeOf(g)]}</span>${g.example ? '<span class="tag">Example</span>' : ""}<span>7-day <b class="mono">${s == null ? "—" : Math.round(s * 100) + "%"}</b></span><span>This week <b class="mono">${hrs(wt.done)}/${hrs(wt.plan)}</b></span>${g.target ? `<span>Target <b class="mono">${esc(fmtShort(g.target))}</b></span>` : ""}</div>
-        ${trackerOf(g) ? trackerBlock(g) : ""}
+        ${trackerOf(g) ? trackerBlock(g) : ""}${showupOf(g) ? showupBlock(g) : ""}
         ${g.why ? `<p class="why">Why: ${esc(g.why)}</p>` : ""}
         ${ms.length ? `<div class="gps"><p class="eyebrow">Plan · ${ms.filter(m => m.done).length}/${ms.length} milestones</p><div class="ms">${ms.map((m, i) => `<button type="button" role="checkbox" aria-checked="${!!m.done}" data-ms="${g.id}:${i}"><i></i><span>${esc(m.t)}</span></button>`).join("")}</div></div>` : ""}
         <div class="gps"><p class="eyebrow">System${g.who ? ` · accountable to ${esc(g.who)}` : ""}</p>
@@ -968,6 +990,18 @@ details.method dd { font-size: 15px; }
       <button type="button" class="btn" data-tracker="${g.id}">Log a sale</button></div>`;
   }
 
+  function showupBlock(g) {
+    const tr = showupOf(g), t = today(), ws = weekStart(t), set = showDays(g), n = weekCount(g, ws), streak = weekStreak(g), total = set.size;
+    const pct = Math.min(100, n / tr.target * 100), left = tr.target - n, daysLeft = 7 - diffDays(ws, t);
+    const status = n >= tr.target ? "done 🎉" : left > daysLeft ? `${left} to go, ${daysLeft} day${daysLeft === 1 ? "" : "s"} left` : `${left} to go`;
+    const days = Array.from({ length: 7 }, (_, i) => { const d = addDays(ws, i), on = set.has(d); return `<button type="button" class="${d === t ? "today" : ""}" data-showup="${g.id}" data-sday="${d}" aria-pressed="${on}" ${d > t ? "disabled" : ""} aria-label="${fmtDay(d)}${on ? ", showed up" : ""}"><i>${on ? "✓" : ""}</i>${DOW[parse(d).getDay()].slice(0, 2)}</button>`; }).join("");
+    return `<div class="trk" style="--c:${gcolor(g)}"><div class="trk-row"><span class="trk-total">${n} / ${tr.target}</span><span class="trk-of">this week · ${status}</span></div>
+      <div class="trk-bar" role="img" aria-label="${n} of ${tr.target} this week"><i style="width:${pct}%"></i></div>
+      <div class="shw-days">${days}</div>
+      <span class="shw-sub">${streak ? `${streak}-week streak · ` : ""}${total} session${total === 1 ? "" : "s"} total</span>
+      ${set.has(t) ? "" : `<button type="button" class="btn" data-showup="${g.id}" data-sday="${t}">I showed up today</button>`}</div>`;
+  }
+
   // ---------- sheet (forms) ----------
   let sheetCtx = null;
   const chipRow = (id, attr, items, sel) => `<div class="chips" id="${id}">${items.map(([v, l]) => `<button type="button" data-${attr}="${v}" aria-pressed="${v === sel}">${l}</button>`).join("")}</div>`;
@@ -981,6 +1015,7 @@ details.method dd { font-size: 15px; }
         <div class="field"><label for="f-measure">How you'll know you got there</label><input id="f-measure" maxlength="100" placeholder="e.g. Finish in under 2 hours" value="${esc(obj?.measure)}"></div>
         <div class="field"><label for="f-why">Why it matters</label><textarea id="f-why" maxlength="240" placeholder="The coach uses this for context">${esc(obj?.why)}</textarea></div>
         <div class="field"><label for="f-track">Profit tracker target in $ (optional)</label><input id="f-track" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 500" value="${obj ? (trackerOf(obj)?.target || dollarsIn(obj.title) || dollarsIn(obj.measure) || "") : ""}"><span class="hint" style="margin:0">Adds a running total and a "Log a sale" button to this goal.</span></div>
+        <div class="field"><label for="f-show">Show-up target: days per week (optional)</label><input id="f-show" type="number" inputmode="numeric" min="0" max="7" step="1" placeholder="e.g. 4" value="${obj ? (showupOf(obj)?.target || perWeekIn(obj.title) || perWeekIn(obj.measure) || "") : ""}"><span class="hint" style="margin:0">Adds a one-tap "I showed up" button, this week's count and your streak of weeks.</span></div>
         <div class="field"><span class="lbl">This season</span>${chipRow("f-mode", "mode", [["sprint", "Sprint"], ["maintain", "Maintain"], ["pause", "Pause"]], sheetCtx.mode)}</div>
         <div class="field"><label for="f-ms">Plan: 3–5 milestones, one per line</label><textarea id="f-ms" maxlength="600" placeholder="Sign up for a race&#10;Run 10k without stopping&#10;Long run of 18k">${esc((obj?.milestones || []).map(m => m.t).join("\n"))}</textarea></div>
         <div class="row2"><div class="field"><label for="f-target">Target date</label><input id="f-target" type="date" value="${esc(obj?.target)}"></div>
@@ -1104,7 +1139,9 @@ details.method dd { font-size: 15px; }
       const milestones = $("f-ms").value.split("\n").map(s => s.trim()).filter(Boolean).slice(0, 8).map(t => ({ t, done: !!prev.find(m => m.t === t)?.done }));
       const tt = +$("f-track").value || 0, oldEntries = obj?.tracker?.entries || [];
       const tracker = tt > 0 ? { target: tt, entries: oldEntries } : oldEntries.length ? { target: 0, entries: oldEntries } : null;
-      save("goals", id, { ...(obj ? stripId(obj) : {}), tracker, title, measure: $("f-measure").value.trim(), why: $("f-why").value.trim(), mode: sheetCtx.mode, milestones, target: $("f-target").value || "", who: $("f-who").value.trim(), color: sheetCtx.color, createdAt: obj?.createdAt || new Date().toISOString() });
+      const st = Math.min(7, Math.max(0, Math.round(+$("f-show").value || 0))), oldDays = obj?.showup?.days || [];
+      const showup = st > 0 ? { target: st, days: oldDays } : oldDays.length ? { target: 0, days: oldDays } : null;
+      save("goals", id, { ...(obj ? stripId(obj) : {}), tracker, showup, title, measure: $("f-measure").value.trim(), why: $("f-why").value.trim(), mode: sheetCtx.mode, milestones, target: $("f-target").value || "", who: $("f-who").value.trim(), color: sheetCtx.color, createdAt: obj?.createdAt || new Date().toISOString() });
       toast(obj ? "Goal saved" : "Goal added");
     } else if (kind === "habit") {
       if (!sheetCtx.days.length) { toast("Pick at least one day."); return; }
@@ -1126,6 +1163,7 @@ details.method dd { font-size: 15px; }
     const b = e.target.closest("button"); if (!b || b.closest("#sheetForm") || b.closest("#focus")) return;
     if (b.dataset.tab) { state.tab = b.dataset.tab; try { localStorage.setItem(LS + "-tab", state.tab); } catch {} render(); return; }
     if (b.id === "ring") { state.tab = "today"; state.sel = today(); render(); return; }
+    if (b.dataset.showup) { toggleShowup(b.dataset.showup, b.dataset.sday || today()); return; }
     if (b.dataset.tracker) { const g = goalById(b.dataset.tracker); if (g && trackerOf(g)) { openSheet("tracker", g); if (b.dataset.tday) { sheetCtx.day = b.dataset.tday; $("s-date").value = b.dataset.tday; } } return; }
     if (b.dataset.day) { state.sel = b.dataset.day; state.reflectEdit = false; render(); return; }
     if (b.id === "prevWeek") { state.sel = addDays(weekStart(state.sel), -1); render(); return; }
@@ -1155,7 +1193,29 @@ details.method dd { font-size: 15px; }
     const cur = { ...dayDoc(d).done };
     if (cur[hid]) delete cur[hid]; else cur[hid] = true;
     saveDay(d, { done: cur });
+    // ticking a habit of a show-up goal counts as showing up that day
+    const h = state.habits.find(x => x.id === hid), g = h && goalById(h.goalId);
+    if (g && showupOf(g) && !!cur[hid] !== showDays(g).has(d)) {
+      const set = showDays(g); cur[hid] ? set.add(d) : set.delete(d); saveShowup(g, [...set].sort());
+    }
     render();
+  }
+  // marks or clears a show-up day, keeps the goal's habits for that day in step, and ticks "N sessions" milestones
+  function toggleShowup(gid, d) {
+    const g = goalById(gid); if (!g || !showupOf(g) || d > today()) return;
+    const set = showDays(g), on = !set.has(d);
+    on ? set.add(d) : set.delete(d);
+    saveShowup(g, [...set].sort());
+    const hs = habitsOf(gid).filter(h => isSched(h, d));
+    if (hs.length) { const done = { ...dayDoc(d).done }; hs.forEach(h => { if (on) done[h.id] = true; else delete done[h.id]; }); saveDay(d, { done }); }
+    render();
+    if (on) { const n = weekCount(goalById(gid) || g, weekStart(d)), tg = showupOf(g).target; toast(n >= tg ? `${n}/${tg} this week. Week done!` : `Showed up · ${n}/${tg} this week`); }
+  }
+  function saveShowup(g, days) {
+    const showup = { ...g.showup, days };
+    const milestones = (g.milestones || []).map(m => { const n = sessionsIn(m.t); return n > 0 ? { ...m, done: days.length >= n } : m; });
+    save("goals", g.id, { ...stripId(g), showup, milestones });
+    if (mode === "db") { g.showup = showup; g.milestones = milestones; }
   }
   function toggleMilestone(key) {
     const [gid, i] = key.split(":"); const g = goalById(gid); if (!g) return;
@@ -1244,6 +1304,7 @@ details.method dd { font-size: 15px; }
       season: s ? { name: s.name, theme: s.theme, week: s.week, of: s.weeks, daysLeft: s.left } : null,
       goals: state.goals.map(g => ({ id: g.id, title: g.title, mode: MODE_LABEL[modeOf(g)], measure: g.measure || undefined, why: g.why || undefined, target: g.target || undefined, accountableTo: g.who || undefined,
         milestones: (g.milestones || []).map(m => (m.done ? "[x] " : "[ ] ") + m.t), score7: round(goalScore(g.id, t)), scorePrev7: round(goalScore(g.id, addDays(t, -7))), status: modeOf(g) === "pause" ? "Paused" : STATUS_LABEL[statusOf(goalScore(g.id, t))],
+        showUp: showupOf(g) ? { targetPerWeek: showupOf(g).target, thisWeek: weekCount(g, ws), weekStreak: weekStreak(g), totalSessions: showDays(g).size, last4Weeks: [1, 2, 3, 4].map(k => weekCount(g, addDays(ws, -7 * k))) } : undefined,
         profitTracker: trackerOf(g) ? { target: trackerOf(g).target, totalProfit: round(trackerTotal(g)), sales: (g.tracker.entries || []).length, profitLast7Days: round((g.tracker.entries || []).filter(e => e.date > addDays(t, -7)).reduce((a, e) => a + saleProfit(e), 0)) } : undefined,
         hoursThisWeek: (() => { const w = weekTime(g.id, ws); return { planned: round(w.plan / 60), done: round(w.done / 60) }; })() })),
       habits: state.habits.filter(isActiveHabit).map(h => ({ goal: goalById(h.goalId)?.title, title: h.title, cue: h.cue || undefined, time: h.time, minutes: mins(h), days: daysLabel(h.days),
@@ -1325,12 +1386,17 @@ ${JSON.stringify(data)}`;
     remote.flushing = true;
     pendingMem = pendingMem || readPending();
     try {
-      for (const k of Object.keys(pendingMem)) {
-        const data = pendingMem[k];
-        const r = await api("doc/" + k, data === null ? { method: "DELETE" } : { method: "PUT", body: JSON.stringify(data) });
-        if (r.status === 401) { lockRemote("Your passcode changed. Enter it again."); break; }
-        if (!r.ok) { toast("Couldn't save to your server. Keel will retry."); break; }
-        if (pendingMem[k] === data) { delete pendingMem[k]; writePending(pendingMem); }
+      // keep going until nothing is left, so writes queued mid-flush go out too
+      let ok = true;
+      while (ok && Object.keys(pendingMem).length) {
+        for (const k of Object.keys(pendingMem)) {
+          if (!(k in pendingMem)) continue;
+          const data = pendingMem[k];
+          const r = await api("doc/" + k, data === null ? { method: "DELETE" } : { method: "PUT", body: JSON.stringify(data) });
+          if (r.status === 401) { lockRemote("Your passcode changed. Enter it again."); ok = false; break; }
+          if (!r.ok) { toast("Couldn't save to your server. Keel will retry."); ok = false; break; }
+          if (pendingMem[k] === data) { delete pendingMem[k]; writePending(pendingMem); }
+        }
       }
     } catch { /* offline: keep pending, retry later */ }
     remote.flushing = false;
