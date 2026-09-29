@@ -17,10 +17,12 @@ Setup takes about 10 minutes and has 4 steps.
 
 ## 1. Put it online (free)
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/agreer1234/fortnite-throwback/tree/main/keel)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/agreer1234/keel)
 
 1. Tap the button, then sign in to Cloudflare (or sign up; it's free, with no card needed).
-2. Accept the defaults and deploy.
+2. Accept the defaults and deploy. The form asks for `ANTHROPIC_API_KEY`: paste
+   a Claude API key to turn on the AI coach (step 2 below), or type `none` to
+   skip it. Keel ignores anything that isn't a real key.
 3. When it finishes, copy your app's address. It looks like
    `https://keel.<your-name>.workers.dev`.
 

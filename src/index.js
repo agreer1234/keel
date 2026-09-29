@@ -23,6 +23,9 @@ const ID_RE = /^[A-Za-z0-9_.:-]{1,80}$/;
 const MAX_DOC = 200_000;
 const LOG_DAYS = 120;
 const COACH_MODEL = "claude-opus-5-5";
+// A real key starts with "sk-ant-"; anything else (blank, or a placeholder typed to get
+// past the deploy form) means the coach is off.
+const hasCoachKey = (env) => typeof env.ANTHROPIC_API_KEY === "string" && env.ANTHROPIC_API_KEY.trim().startsWith("sk-ant-");
 const GOAL_COLORS = ["#0A84FF", "#FF375F", "#30D158", "#FF9F0A", "#BF5AF2", "#40C8E0", "#5E5CE6", "#AC8E68"];
 
 const json = (data, status = 200) =>
@@ -68,7 +71,7 @@ export class KeelStore extends DurableObject {
 
     try {
       if (path === "status" && method === "GET") {
-        return json({ app: "keel", claimed: !!(await this.ctx.storage.get("auth")), coach: !!this.env.ANTHROPIC_API_KEY });
+        return json({ app: "keel", claimed: !!(await this.ctx.storage.get("auth")), coach: hasCoachKey(this.env) });
       }
       if (path === "claim" && method === "POST") return await this.claim(request);
 
@@ -192,17 +195,26 @@ export class KeelStore extends DurableObject {
       season: seasonInfo,
       goals: goals
         .filter((g) => modeOf(g) !== "pause")
-        .map((g) => { const v = score(g.id); return { title: g.title, color: GOAL_COLORS[(g.color ?? 0) % 8], score: v == null ? null : Math.round(v * 100), status: status(v) }; }),
+        .map((g) => {
+          const v = score(g.id);
+          const row = { title: g.title, color: GOAL_COLORS[(g.color ?? 0) % 8], score: v == null ? null : Math.round(v * 100), status: status(v) };
+          // goals with a profit tracker report their running total instead of a habit score
+          if (g.tracker && +g.tracker.target > 0) {
+            const total = (g.tracker.entries || []).reduce((a, e) => a + (+e.sold || 0) - (+e.cost || 0) - (+e.fees || 0), 0);
+            row.tracker = { total: Math.round(total * 100) / 100, target: +g.tracker.target };
+          }
+          return row;
+        }),
     };
   }
 
   // ---- AI coach ----
   async coach(request) {
-    if (!this.env.ANTHROPIC_API_KEY) return json({ error: "coach not configured", code: "not_granted" }, 503);
+    if (!hasCoachKey(this.env)) return json({ error: "coach not configured", code: "not_granted" }, 503);
     const { prompt } = await request.json();
     if (typeof prompt !== "string" || !prompt || prompt.length > 60_000) return json({ error: "bad prompt" }, 400);
 
-    const client = new Anthropic({ apiKey: this.env.ANTHROPIC_API_KEY });
+    const client = new Anthropic({ apiKey: this.env.ANTHROPIC_API_KEY.trim() });
     try {
       const response = await client.beta.messages.create({
         model: COACH_MODEL,
