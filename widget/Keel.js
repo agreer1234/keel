@@ -138,6 +138,11 @@ function goalRow(parent, g) {
   r.addSpacer(6);
   text(r, g.title, 12, "regular", INK);
   r.addSpacer();
+  if (g.tracker) {
+    const fmt = (v) => (v < 0 ? "-$" : "$") + Math.round(Math.abs(v)).toLocaleString("en-US");
+    text(r, `${fmt(g.tracker.total)} / ${fmt(g.tracker.target)}`, 11, "semibold", g.tracker.total >= g.tracker.target ? STATUS.on.color : INK);
+    return;
+  }
   const st = STATUS[g.status] || STATUS.none;
   text(r, st.label, 11, "semibold", st.color);
 }

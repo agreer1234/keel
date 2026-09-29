@@ -1,2 +1,4 @@
 # Optional: turns on the AI coach ("New read"). Get a key at https://platform.claude.com
+# If the deploy form won't accept a blank value, type "none": Keel treats anything that
+# isn't a real key (starting with sk-ant-) as no key.
 ANTHROPIC_API_KEY=
