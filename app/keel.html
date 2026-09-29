@@ -372,6 +372,14 @@ details.method dd { font-size: 15px; }
 .shw-days button.today { color: var(--ink); font-weight: 600; }
 .shw-days button:disabled { opacity: .35; }
 .shw-sub { font-size: 14px; color: var(--muted); }
+.quick { display: grid; gap: 8px; margin-bottom: 16px; }
+.quick button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; border: 0; border-radius: 14px; background: var(--sunk); color: var(--ink); font-size: 17px; font-weight: 600; text-align: left; }
+.quick button i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--c); display: grid; place-items: center; font-style: normal; font-size: 14px; color: #fff; flex: none; }
+.quick button span { flex: 1; min-width: 0; }
+.quick button small { font-size: 14px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+.quick button[aria-pressed="true"] { background: var(--c); color: #fff; }
+.quick button[aria-pressed="true"] i { background: #fff; border-color: #fff; color: var(--c); }
+.quick button[aria-pressed="true"] small { color: rgba(255,255,255,.85); }
 /* profit tracker */
 .trk { display: grid; gap: 8px; padding: 14px; border-radius: 16px; background: var(--sunk); }
 .trk-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -895,12 +903,18 @@ details.method dd { font-size: 15px; }
     $("daySum").textContent = hs.length ? `${hs.filter(h => isDone(h.id, d)).length}/${hs.length} done · ${hrs(planned)}` : "";
     renderReflect(d);
     if (!state.loaded) { $("sched").innerHTML = `<p class="muted">Loading your schedule…</p>`; return; }
+    // one-tap "I went" buttons for goals that count days you show up
+    const quick = d > t ? "" : activeGoals().filter(showupOf).map(g => {
+      const on = showDays(g).has(d), n = weekCount(g, weekStart(d)), tg = showupOf(g).target;
+      return `<button type="button" style="--c:${gcolor(g)}" data-showup="${g.id}" data-sday="${d}" aria-pressed="${on}"><i>${on ? "✓" : ""}</i><span>${on ? "Went" : "I went"} ${d === t ? "today" : "this day"}<br><small>${esc(g.title)}</small></span><small>${n}/${tg} this week</small></button>`;
+    }).join("");
+    const quickHtml = quick ? `<div class="quick">${quick}</div>` : "";
     if (!hs.length) {
-      $("sched").innerHTML = `<div class="empty"><h3>Nothing scheduled</h3><p class="muted">${state.habits.length ? "No habits land on this day." : "Habits you add to a goal show up here at their time."}</p><button type="button" class="btn-ghost" data-act="${state.goals.length ? "new-habit" : "new-goal"}">${state.goals.length ? "Add a habit" : "Add a goal"}</button></div>`;
+      $("sched").innerHTML = quickHtml + `<div class="empty"><h3>Nothing scheduled</h3><p class="muted">${state.habits.length ? "No habits land on this day." : "Habits you add to a goal show up here at their time."}</p><button type="button" class="btn-ghost" data-act="${state.goals.length ? "new-habit" : "new-goal"}">${state.goals.length ? "Add a habit" : "Add a goal"}</button></div>`;
       return;
     }
     const parts = [["Morning", "00:00", "12:00"], ["Afternoon", "12:00", "17:00"], ["Evening", "17:00", "24:00"]];
-    $("sched").innerHTML = parts.map(([name, a, b]) => {
+    $("sched").innerHTML = quickHtml + parts.map(([name, a, b]) => {
       const list = hs.filter(h => (h.time || "00:00") >= a && (h.time || "00:00") < b);
       if (!list.length) return "";
       return `<div class="block"><h3 class="eyebrow">${name}</h3>${list.map(h => {
