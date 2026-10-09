@@ -623,6 +623,13 @@ details.method dd { font-size: 15px; }
 
   function goalScore(gid, end, win = 7) {
     const t = today(); let sch = 0, dn = 0;
+    // show-up goals are scored on days showed up in the window against the weekly target
+    const sg = goalById(gid);
+    if (showupOf(sg)) {
+      const set = showDays(sg); if (!set.size) return null;
+      let n = 0; for (let i = 0; i < win; i++) if (set.has(addDays(end, -i))) n++;
+      return Math.min(1, n / (showupOf(sg).target * win / 7));
+    }
     const hs = habitsOf(gid);
     for (let i = 0; i < win; i++) {
       const d = addDays(end, -i);
