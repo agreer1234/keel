@@ -394,6 +394,8 @@ details.method dd { font-size: 15px; }
 .sale { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; }
 .sale .it { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sale .it small { display: block; font-size: 12px; color: var(--muted); }
+.sale button.it { border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit; }
+.sale.editing { background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 10px; }
 .sale .pf { font-weight: 600; font-variant-numeric: tabular-nums; }
 .sale .pf.neg { color: var(--off); }
 .sale .x { border: 0; background: none; color: var(--muted); font-size: 13px; padding: 6px 4px; }
@@ -598,6 +600,13 @@ details.method dd { font-size: 15px; }
 
   function goalScore(gid, end, win = 7) {
     const t = today(); let sch = 0, dn = 0;
+    // show-up goals are scored on days showed up in the window against the weekly target
+    const sg = goalById(gid);
+    if (showupOf(sg)) {
+      const set = showDays(sg); if (!set.size) return null;
+      let n = 0; for (let i = 0; i < win; i++) if (set.has(addDays(end, -i))) n++;
+      return Math.min(1, n / (showupOf(sg).target * win / 7));
+    }
     const hs = habitsOf(gid);
     for (let i = 0; i < win; i++) {
       const d = addDays(end, -i);
@@ -1033,7 +1042,7 @@ details.method dd { font-size: 15px; }
         <div class="trk" style="--c:${gcolor(g)};background:var(--surface)"><div class="trk-row"><span class="trk-total">${money(total)}</span><span class="trk-of">of ${money(tr.target)} · ${Math.round(pct)}%</span></div>
           <div class="trk-bar"><i style="width:${pct}%"></i></div>
           <span class="trk-of">${money(week)} this week · ${entries.length} sale${entries.length === 1 ? "" : "s"} logged</span></div>
-        <div class="field"><label for="s-item">What sold</label><input id="s-item" maxlength="80" placeholder="e.g. Dyson vacuum" autocomplete="off"></div>
+        <div class="field"><label for="s-item" id="s-head">What sold</label><input id="s-item" maxlength="80" placeholder="e.g. Dyson vacuum" autocomplete="off"></div>
         <div class="row3">
           <div class="field"><label for="s-sold">Sold for</label><input id="s-sold" type="number" inputmode="decimal" min="0" step="any" placeholder="$"></div>
           <div class="field"><label for="s-cost">Paid for it</label><input id="s-cost" type="number" inputmode="decimal" min="0" step="any" placeholder="$"></div>
@@ -1041,8 +1050,8 @@ details.method dd { font-size: 15px; }
         </div>
         <div class="field"><label for="s-date">Date</label><input id="s-date" type="date" max="${today()}" value="${d0}"></div>
         <div class="sale-preview"><span class="muted">Profit</span><b id="s-profit">$0</b></div>
-        <div class="sheet-actions"><button type="button" class="btn-ghost" id="s-none">No sales today</button><div class="right"><button type="button" class="btn-ghost" id="f-cancel">Close</button><button type="submit" class="btn">Save sale</button></div></div>
-        ${entries.length ? `<div class="field"><span class="lbl">Recent sales</span><div class="sales">${entries.slice(0, 30).map(e => `<div class="sale"><span class="it">${esc(e.item || "Sale")}<small>${esc(fmtShort(e.date))} · sold ${money(+e.sold || 0)}${+e.cost ? ` · paid ${money(+e.cost)}` : ""}${+e.fees ? ` · fees ${money(+e.fees)}` : ""}</small></span><span class="pf${saleProfit(e) < 0 ? " neg" : ""}">${money(saleProfit(e))}</span><button type="button" class="x" data-del-sale="${e.id}" aria-label="Delete this sale">Delete</button></div>`).join("")}</div></div>` : ""}`;
+        <div class="sheet-actions"><button type="button" class="btn-ghost" id="s-none">No sales today</button><div class="right"><button type="button" class="btn-ghost" id="f-cancel">Close</button><button type="submit" class="btn" id="s-save">Save sale</button></div></div>
+        ${entries.length ? `<div class="field"><span class="lbl">Recent sales</span><div class="sales">${entries.slice(0, 30).map(e => `<div class="sale"><button type="button" class="it" data-edit-sale="${e.id}" aria-label="Edit ${esc(e.item || "this sale")}">${esc(e.item || "Sale")}<small>${esc(fmtShort(e.date))} · sold ${money(+e.sold || 0)}${+e.cost ? ` · paid ${money(+e.cost)}` : ""}${+e.fees ? ` · fees ${money(+e.fees)}` : ""} · tap to edit</small></button><span class="pf${saleProfit(e) < 0 ? " neg" : ""}">${money(saleProfit(e))}</span><button type="button" class="x" data-del-sale="${e.id}" aria-label="Delete this sale">Delete</button></div>`).join("")}</div></div>` : ""}`;
       const upd = () => { const v = (+$("s-sold").value || 0) - (+$("s-cost").value || 0) - (+$("s-fees").value || 0); $("s-profit").textContent = money(v); $("s-profit").style.color = v < 0 ? "var(--off)" : ""; };
       ["s-sold", "s-cost", "s-fees"].forEach(id => $(id).addEventListener("input", upd));
       $("sheet").hidden = false;
@@ -1080,6 +1089,17 @@ details.method dd { font-size: 15px; }
       const entries = (g.tracker.entries || []).filter(x => x.id !== b.dataset.delSale);
       saveTracker(g, entries); toast("Sale deleted"); reopenTracker(g.id); return;
     }
+    if (b.dataset.editSale && sheetCtx.kind === "tracker") {
+      // load the sale into the form; saving then updates it in place
+      const e = (goalById(sheetCtx.obj.id)?.tracker?.entries || []).find(x => x.id === b.dataset.editSale); if (!e) return;
+      sheetCtx.editId = e.id;
+      $("s-item").value = e.item || ""; $("s-sold").value = +e.sold || ""; $("s-cost").value = +e.cost || ""; $("s-fees").value = +e.fees || ""; $("s-date").value = e.date;
+      $("s-sold").dispatchEvent(new Event("input"));
+      $("s-head").textContent = "Editing sale"; $("s-save").textContent = "Update sale"; $("s-none").textContent = "Cancel edit"; $("s-none").id = "s-canceledit";
+      document.querySelectorAll(".sale.editing").forEach(x => x.classList.remove("editing")); b.closest(".sale").classList.add("editing");
+      $("s-item").scrollIntoView({ behavior: "smooth", block: "center" }); return;
+    }
+    if (b.id === "s-canceledit" && sheetCtx.kind === "tracker") { reopenTracker(sheetCtx.obj.id); return; }
     if (b.id === "s-none" && sheetCtx.kind === "tracker") {
       const d = $("s-date").value || today();
       markTrackerHabits(sheetCtx.obj.id, d); closeSheet(); toast("Marked done. No sales logged"); return;
@@ -1113,6 +1133,13 @@ details.method dd { font-size: 15px; }
       const sold = +$("s-sold").value || 0, cost = +$("s-cost").value || 0, fees = +$("s-fees").value || 0;
       if (!sold && !cost && !fees) { toast("Enter what it sold for."); return; }
       const d = $("s-date").value && $("s-date").value <= today() ? $("s-date").value : today();
+      if (sheetCtx.editId) {
+        const entries = (g.tracker.entries || []).map(x => x.id === sheetCtx.editId ? { ...x, date: d, item: $("s-item").value.trim(), sold, cost, fees } : x);
+        saveTracker(g, entries);
+        toast(`Sale updated · ${money(entries.reduce((a, x) => a + saleProfit(x), 0))} total`);
+        reopenTracker(g.id);
+        return;
+      }
       const entry = { id: uid(), date: d, at: new Date().toISOString(), item: $("s-item").value.trim(), sold, cost, fees };
       const before = trackerTotal(g);
       saveTracker(g, [...(g.tracker.entries || []), entry]);

@@ -158,6 +158,13 @@ export class KeelStore extends DurableObject {
     const done = (h, d) => !!(days[d] && days[d][h.id]);
 
     const score = (gid) => {
+      // show-up goals: days showed up in the last 7 against the weekly target
+      const sg = goal[gid];
+      if (sg && sg.showup && +sg.showup.target > 0) {
+        const set = new Set(sg.showup.days || []); if (!set.size) return null;
+        let c = 0; for (let i = 0; i < 7; i++) if (set.has(addDays(date, -i))) c++;
+        return Math.min(1, c / +sg.showup.target);
+      }
       let s = 0, n = 0;
       for (let i = 0; i < 7; i++) {
         const d = addDays(date, -i);
