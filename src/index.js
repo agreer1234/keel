@@ -161,9 +161,13 @@ export class KeelStore extends DurableObject {
       // show-up goals: days showed up in the last 7 against the weekly target
       const sg = goal[gid];
       if (sg && sg.showup && +sg.showup.target > 0) {
-        const set = new Set(sg.showup.days || []); if (!set.size) return null;
-        let c = 0; for (let i = 0; i < 7; i++) if (set.has(addDays(date, -i))) c++;
-        return Math.min(1, c / +sg.showup.target);
+        const set = new Set(sg.showup.days || []), since = sg.showup.since || [...set].sort()[0];
+        if (!set.size && (!since || since > date)) return null;
+        let c = 0, w = 0; for (let i = 0; i < 7; i++) { const d = addDays(date, -i); if (since && d < since) break; w++; if (set.has(d)) c++; }
+        if (!w) return null;
+        const open = !set.has(date) ? 1 : 0;
+        if (w - open <= 0) return null;
+        return Math.min(1, c / (+sg.showup.target * (w - open) / 7));
       }
       let s = 0, n = 0;
       for (let i = 0; i < 7; i++) {
@@ -214,7 +218,7 @@ export class KeelStore extends DurableObject {
           if (g.showup && +g.showup.target > 0) {
             const ws = addDays(date, -((dow(date) + 6) % 7)), set = new Set(g.showup.days || []);
             let n = 0; for (let i = 0; i < 7; i++) if (set.has(addDays(ws, i))) n++;
-            row.showup = { week: n, target: +g.showup.target };
+            row.showup = { week: n, target: +g.showup.target, today: set.has(date) };
           }
           return row;
         }),
