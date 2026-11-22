@@ -204,8 +204,10 @@ export class KeelStore extends DurableObject {
       next,
       today,
       season: seasonInfo,
+      // sprint goals first, so the widget's limited rows show what you're pushing on
       goals: goals
         .filter((g) => modeOf(g) !== "pause")
+        .sort((a, b) => (modeOf(a) === "sprint" ? 0 : 1) - (modeOf(b) === "sprint" ? 0 : 1))
         .map((g) => {
           const v = score(g.id);
           const row = { title: g.title, color: GOAL_COLORS[(g.color ?? 0) % 8], score: v == null ? null : Math.round(v * 100), status: status(v) };
@@ -217,8 +219,11 @@ export class KeelStore extends DurableObject {
           // goals with a show-up target report this week's count
           if (g.showup && +g.showup.target > 0) {
             const ws = addDays(date, -((dow(date) + 6) % 7)), set = new Set(g.showup.days || []);
-            let n = 0; for (let i = 0; i < 7; i++) if (set.has(addDays(ws, i))) n++;
-            row.showup = { week: n, target: +g.showup.target, today: set.has(date) };
+            const days = Array.from({ length: 7 }, (_, i) => set.has(addDays(ws, i)));
+            let streak = 0, d = set.has(date) ? date : addDays(date, -1);
+            while (set.has(d) && streak < 3660) { streak++; d = addDays(d, -1); }
+            const verb = String(g.showup.verb || "").trim().toLowerCase() || (/post|tiktok|upload|video|reel|youtube|instagram/i.test(g.title || "") ? "posted" : "went");
+            row.showup = { week: days.filter(Boolean).length, target: +g.showup.target, today: set.has(date), days, todayIdx: (dow(date) + 6) % 7, streak, verb };
           }
           return row;
         }),

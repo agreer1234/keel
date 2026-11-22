@@ -152,10 +152,96 @@ function goalRow(parent, g) {
   text(r, st.label, 11, "semibold", st.color);
 }
 
+// a Mon–Sun row of dots: filled for days checked in, a ring on today, faint for days still to come
+function weekDots(days, todayIdx, color, dot) {
+  const gap = Math.round(dot * 0.5), w = days.length * dot + (days.length - 1) * gap, h = dot + 14;
+  const ctx = new DrawContext();
+  ctx.size = new Size(w, h);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+  const grey = new Color("#8E8E93");
+  ctx.setFont(Font.semiboldSystemFont(9));
+  ctx.setTextAlignedCenter();
+  days.forEach((on, i) => {
+    const x = i * (dot + gap), r = new Rect(x + 1, 1, dot - 2, dot - 2);
+    if (on) { ctx.setFillColor(color); ctx.fillEllipse(r); }
+    else {
+      ctx.setLineWidth(i === todayIdx ? 2.5 : 1.5);
+      ctx.setStrokeColor(i === todayIdx ? color : new Color("#8E8E93", i > todayIdx ? 0.25 : 0.55));
+      ctx.strokeEllipse(r);
+    }
+    ctx.setTextColor(i === todayIdx ? color : grey);
+    ctx.drawTextInRect("MTWTFSS"[i], new Rect(x - 2, dot + 2, dot + 4, 12));
+  });
+  return ctx.getImage();
+}
+
+function barImage(progress, width, color) {
+  const ctx = new DrawContext();
+  ctx.size = new Size(width, 6);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+  const track = new Path();
+  track.addRoundedRect(new Rect(0, 0, width, 6), 3, 3);
+  ctx.addPath(track);
+  ctx.setFillColor(new Color("#8E8E93", 0.25));
+  ctx.fillPath();
+  const p = Math.max(0, Math.min(1, progress));
+  if (p > 0) {
+    const fill = new Path();
+    fill.addRoundedRect(new Rect(0, 0, Math.max(6, width * p), 6), 3, 3);
+    ctx.addPath(fill);
+    ctx.setFillColor(color);
+    ctx.fillPath();
+  }
+  return ctx.getImage();
+}
+
+// daily (or weekly) check-in goal, e.g. "Post on TikTok daily"
+function checkinBlock(parent, g, dot) {
+  const s = parent.addStack();
+  s.layoutVertically();
+  const top = s.addStack();
+  top.centerAlignContent();
+  text(top, g.title.toUpperCase(), 10, "semibold", MUTED);
+  top.addSpacer();
+  const su = g.showup;
+  if (su.target >= 7 && su.streak) text(top, `🔥${su.streak}`, 11, "semibold", INK);
+  else if (su.target < 7) text(top, `${su.week}/${su.target}`, 11, "semibold", su.week >= su.target ? STATUS.on.color : INK);
+  s.addSpacer(5);
+  const img = s.addImage(weekDots(su.days || [], su.todayIdx ?? 0, new Color(g.color), dot));
+  img.imageSize = new Size(7 * dot + 6 * Math.round(dot * 0.5), dot + 14);
+  s.addSpacer(3);
+  const verb = su.verb || "went";
+  const msg = su.today ? `${verb.charAt(0).toUpperCase() + verb.slice(1)} today ✓` : su.target >= 7 ? `Not ${verb} yet today` : `${Math.max(0, su.target - su.week)} to go this week`;
+  text(s, msg, 12, "semibold", su.today ? STATUS.on.color : su.target >= 7 ? STATUS.adj.color : INK);
+}
+
+// running money total with a progress bar, e.g. "$381 / $500"
+function moneyBlock(parent, g, width) {
+  const s = parent.addStack();
+  s.layoutVertically();
+  const r = s.addStack();
+  r.centerAlignContent();
+  text(r, g.title, 12, "regular", INK);
+  r.addSpacer();
+  const fmt = (v) => (v < 0 ? "-$" : "$") + Math.round(Math.abs(v)).toLocaleString("en-US");
+  const done = g.tracker.total >= g.tracker.target;
+  text(r, `${fmt(g.tracker.total)} / ${fmt(g.tracker.target)}`, 12, "semibold", done ? STATUS.on.color : INK);
+  s.addSpacer(4);
+  const img = s.addImage(barImage(g.tracker.target ? g.tracker.total / g.tracker.target : 0, width, done ? STATUS.on.color : new Color(g.color)));
+  img.imageSize = new Size(width, 6);
+}
+
 function build(d, family) {
   const w = new ListWidget();
   w.backgroundColor = BG;
   w.setPadding(14, 14, 14, 14);
+  const goals = d.goals || [];
+  // the daily check-in goal goes top right; fall back to any check-in goal
+  const featured = goals.find((g) => g.showup && g.showup.target >= 7) || goals.find((g) => g.showup);
+  const money = goals.filter((g) => g.tracker);
+  const rest = goals.filter((g) => g !== featured && !g.tracker);
 
   const head = w.addStack();
   head.centerAlignContent();
@@ -164,7 +250,13 @@ function build(d, family) {
   if (d.season && family !== "small") text(head, `${d.season.name} · Wk ${d.season.week}/${d.season.weeks}`, 11, "medium", MUTED);
   w.addSpacer(8);
 
-  if (family === "small") {
+  if (family === "small" && featured) {
+    // small: the daily check-in fills the widget, with habits as one line underneath
+    w.addSpacer(2);
+    checkinBlock(w, featured, 14);
+    w.addSpacer();
+    if (d.total) text(w, `Habits ${d.done}/${d.total}`, 11, "semibold", d.done === d.total ? STATUS.on.color : MUTED);
+  } else if (family === "small") {
     const row = w.addStack();
     row.addSpacer();
     ringBlock(row, d, 64);
@@ -178,29 +270,36 @@ function build(d, family) {
     row.addSpacer(14);
     const right = row.addStack();
     right.layoutVertically();
-    nextBlock(right, d, false);
+    if (featured) checkinBlock(right, featured, 18);
+    else nextBlock(right, d, false);
     w.addSpacer(10);
-    const goals = d.goals.slice(0, family === "large" ? 6 : 2);
-    goals.forEach((g, i) => { goalRow(w, g); if (i < goals.length - 1) w.addSpacer(4); });
-
-    if (family === "large" && d.today.length) {
-      w.addSpacer(12);
-      text(w, "TODAY", 10, "semibold", MUTED);
-      w.addSpacer(4);
-      d.today.slice(0, 7).forEach((h) => {
-        const r = w.addStack();
-        r.centerAlignContent();
-        const sym = SFSymbol.named(h.done ? "checkmark.circle.fill" : "circle");
-        sym.applyFont(Font.systemFont(14));
-        const img = r.addImage(sym.image);
-        img.imageSize = new Size(15, 15);
-        img.tintColor = h.done ? BLUE : MUTED;
-        r.addSpacer(8);
-        text(r, h.time, 12, "regular", MUTED);
-        r.addSpacer(8);
-        text(r, h.title, 13, "regular", h.done ? MUTED : INK);
-        w.addSpacer(3);
-      });
+    const barWidth = 300;
+    if (family === "medium") {
+      // one money goal with its bar, or the next goal row
+      if (money.length) moneyBlock(w, money[0], barWidth);
+      else rest.slice(0, 2).forEach((g, i) => { goalRow(w, g); if (i === 0) w.addSpacer(4); });
+    } else {
+      money.slice(0, 2).forEach((g) => { moneyBlock(w, g, barWidth); w.addSpacer(8); });
+      rest.slice(0, 4).forEach((g, i, a) => { goalRow(w, g); if (i < a.length - 1) w.addSpacer(4); });
+      if (d.today.length) {
+        w.addSpacer(10);
+        text(w, "TODAY", 10, "semibold", MUTED);
+        w.addSpacer(4);
+        d.today.slice(0, 4).forEach((h) => {
+          const r = w.addStack();
+          r.centerAlignContent();
+          const sym = SFSymbol.named(h.done ? "checkmark.circle.fill" : "circle");
+          sym.applyFont(Font.systemFont(14));
+          const img = r.addImage(sym.image);
+          img.imageSize = new Size(15, 15);
+          img.tintColor = h.done ? BLUE : MUTED;
+          r.addSpacer(8);
+          text(r, h.time, 12, "regular", MUTED);
+          r.addSpacer(8);
+          text(r, h.title, 13, "regular", h.done ? MUTED : INK);
+          w.addSpacer(3);
+        });
+      }
     }
   }
   w.addSpacer();
