@@ -76,9 +76,9 @@ What each size shows:
 
 | Size | Shows |
 | --- | --- |
-| Small | Today's ring (habits done / scheduled) and your next habit. |
-| Medium | Ring, next habit, season week, and your top two goals' status. |
-| Large | All of that, plus every active goal and today's habit list with ticks. |
+| Small | Your daily check-in goal (e.g. TikTok): this week's Mon–Sun dots, streak and whether today's done. Without one, today's ring and next habit. |
+| Medium | Habit ring, the daily check-in goal's week dots and streak top right, and your money goal's total with a progress bar. |
+| Large | All of that, plus your other goals and today's habit list with ticks. |
 
 The widget refreshes about every 15 minutes (iOS decides the exact timing).
 Tapping it opens Keel in Safari. iOS doesn't let widgets open home screen web apps directly.
