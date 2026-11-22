@@ -144,7 +144,8 @@ function goalRow(parent, g) {
     return;
   }
   if (g.showup) {
-    text(r, `${g.showup.week}/${g.showup.target} this wk`, 11, "semibold", g.showup.week >= g.showup.target ? STATUS.on.color : INK);
+    if (g.showup.target >= 7) text(r, g.showup.today ? "Done today" : "Not yet today", 11, "semibold", g.showup.today ? STATUS.on.color : STATUS.adj.color);
+    else text(r, `${g.showup.week}/${g.showup.target} this wk`, 11, "semibold", g.showup.week >= g.showup.target ? STATUS.on.color : INK);
     return;
   }
   const st = STATUS[g.status] || STATUS.none;

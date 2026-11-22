@@ -599,7 +599,13 @@ details.method dd { font-size: 15px; }
     while (weekCount(g, ws) >= tr.target && n < 520) { n++; ws = addDays(ws, -7); }
     return n;
   };
-  const perWeekIn = t => { const m = String(t || "").match(/(\d)\s*(?:x|×|times|days|sessions)?\s*(?:a|per|\/)\s*w(?:ee)?k/i); return m && +m[1] >= 1 && +m[1] <= 7 ? +m[1] : 0; };
+  // what the check-in button says ("I went today", "I posted today"); set on the goal or guessed from its title
+  const verbOf = g => (g?.showup?.verb || "").trim().toLowerCase() || (/post|tiktok|upload|video|reel|youtube|instagram/i.test(g?.title || "") ? "posted" : "went");
+  const nounOf = g => ({ posted: "posts", went: "sessions" })[verbOf(g)] || "days";
+  const cap = w => w.charAt(0).toUpperCase() + w.slice(1);
+  // days in a row (today counts once it's marked) — used for daily goals
+  const dayStreak = g => { const set = showDays(g); let d = set.has(today()) ? today() : addDays(today(), -1), n = 0; while (set.has(d) && n < 3660) { n++; d = addDays(d, -1); } return n; };
+  const perWeekIn = t => { if (/\b(daily|every ?day|per day|a day|each day)\b/i.test(String(t || ""))) return 7; const m = String(t || "").match(/(\d)\s*(?:x|×|times|days|sessions)?\s*(?:a|per|\/)\s*w(?:ee)?k/i); return m && +m[1] >= 1 && +m[1] <= 7 ? +m[1] : 0; };
   const sessionsIn = t => { const m = String(t || "").match(/(\d+)\s*(?:sessions|workouts|visits|days)\b(?!\s*(?:a|per)\s*w)/i); return m ? +m[1] : 0; };
   const hrs = m => { const h = m / 60; return (h >= 10 ? Math.round(h) : Math.round(h * 10) / 10) + "h"; };
 
@@ -626,9 +632,14 @@ details.method dd { font-size: 15px; }
     // show-up goals are scored on days showed up in the window against the weekly target
     const sg = goalById(gid);
     if (showupOf(sg)) {
-      const set = showDays(sg); if (!set.size) return null;
-      let n = 0; for (let i = 0; i < win; i++) if (set.has(addDays(end, -i))) n++;
-      return Math.min(1, n / (showupOf(sg).target * win / 7));
+      const set = showDays(sg), since = showupOf(sg).since || [...set].sort()[0];
+      if (!set.size && (!since || since > end)) return null;
+      let n = 0, w = 0; for (let i = 0; i < win; i++) { const d = addDays(end, -i); if (since && d < since) break; w++; if (set.has(d)) n++; }
+      if (!w) return null;
+      // today only counts against you once it's over
+      const open = end === t && !set.has(t) ? 1 : 0;
+      if (w - open <= 0) return null;
+      return Math.min(1, n / (showupOf(sg).target * (w - open) / 7));
     }
     const hs = habitsOf(gid);
     for (let i = 0; i < win; i++) {
@@ -936,9 +947,10 @@ details.method dd { font-size: 15px; }
     renderReflect(d);
     if (!state.loaded) { $("sched").innerHTML = `<p class="muted">Loading your schedule…</p>`; return; }
     // one-tap "I went" buttons for goals that count days you show up
-    const quick = d > t ? "" : activeGoals().filter(showupOf).map(g => {
+    const qorder = { sprint: 0, maintain: 1 };
+    const quick = d > t ? "" : activeGoals().filter(showupOf).sort((a, b) => (qorder[modeOf(a)] ?? 2) - (qorder[modeOf(b)] ?? 2)).map(g => {
       const on = showDays(g).has(d), n = weekCount(g, weekStart(d)), tg = showupOf(g).target;
-      return `<button type="button" style="--c:${gcolor(g)}" data-showup="${g.id}" data-sday="${d}" aria-pressed="${on}"><i>${on ? "✓" : ""}</i><span>${on ? "Went" : "I went"} ${d === t ? "today" : "this day"}<br><small>${esc(g.title)}</small></span><small>${n}/${tg} this week</small></button>`;
+      return `<button type="button" style="--c:${gcolor(g)}" data-showup="${g.id}" data-sday="${d}" aria-pressed="${on}"><i>${on ? "✓" : ""}</i><span>${on ? cap(verbOf(g)) : "I " + verbOf(g)} ${d === t ? "today" : "this day"}<br><small>${esc(g.title)}</small></span><small>${n}/${tg} this week</small></button>`;
     }).join("");
     const quickHtml = quick ? `<div class="quick">${quick}</div>` : "";
     if (!hs.length) {
@@ -1014,15 +1026,15 @@ details.method dd { font-size: 15px; }
   }
 
   function showupBlock(g) {
-    const tr = showupOf(g), t = today(), ws = weekStart(t), set = showDays(g), n = weekCount(g, ws), streak = weekStreak(g), total = set.size;
+    const tr = showupOf(g), t = today(), ws = weekStart(t), set = showDays(g), n = weekCount(g, ws), streak = tr.target >= 7 ? dayStreak(g) : weekStreak(g), total = set.size;
     const pct = Math.min(100, n / tr.target * 100), left = tr.target - n, daysLeft = 7 - diffDays(ws, t);
     const status = n >= tr.target ? "done 🎉" : left > daysLeft ? `${left} to go, ${daysLeft} day${daysLeft === 1 ? "" : "s"} left` : `${left} to go`;
     const days = Array.from({ length: 7 }, (_, i) => { const d = addDays(ws, i), on = set.has(d); return `<button type="button" class="${d === t ? "today" : ""}" data-showup="${g.id}" data-sday="${d}" aria-pressed="${on}" ${d > t ? "disabled" : ""} aria-label="${fmtDay(d)}${on ? ", showed up" : ""}"><i>${on ? "✓" : ""}</i>${DOW[parse(d).getDay()].slice(0, 2)}</button>`; }).join("");
     return `<div class="trk" style="--c:${gcolor(g)}"><div class="trk-row"><span class="trk-total">${n} / ${tr.target}</span><span class="trk-of">this week · ${status}</span></div>
       <div class="trk-bar" role="img" aria-label="${n} of ${tr.target} this week"><i style="width:${pct}%"></i></div>
       <div class="shw-days">${days}</div>
-      <span class="shw-sub">${streak ? `${streak}-week streak · ` : ""}${total} session${total === 1 ? "" : "s"} total</span>
-      ${set.has(t) ? "" : `<button type="button" class="btn" data-showup="${g.id}" data-sday="${t}">I showed up today</button>`}</div>`;
+      <span class="shw-sub">${streak ? `${streak}-${tr.target >= 7 ? "day" : "week"} streak · ` : ""}${total} ${total === 1 ? nounOf(g).replace(/s$/, "") : nounOf(g)} total</span>
+      ${set.has(t) ? "" : `<button type="button" class="btn" data-showup="${g.id}" data-sday="${t}">I ${verbOf(g)} today</button>`}</div>`;
   }
 
   // ---------- sheet (forms) ----------
@@ -1038,7 +1050,8 @@ details.method dd { font-size: 15px; }
         <div class="field"><label for="f-measure">How you'll know you got there</label><input id="f-measure" maxlength="100" placeholder="e.g. Finish in under 2 hours" value="${esc(obj?.measure)}"></div>
         <div class="field"><label for="f-why">Why it matters</label><textarea id="f-why" maxlength="240" placeholder="The coach uses this for context">${esc(obj?.why)}</textarea></div>
         <div class="field"><label for="f-track">Profit tracker target in $ (optional)</label><input id="f-track" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 500" value="${obj ? (trackerOf(obj)?.target || dollarsIn(obj.title) || dollarsIn(obj.measure) || "") : ""}"><span class="hint" style="margin:0">Adds a running total and a "Log a sale" button to this goal.</span></div>
-        <div class="field"><label for="f-show">Show-up target: days per week (optional)</label><input id="f-show" type="number" inputmode="numeric" min="0" max="7" step="1" placeholder="e.g. 4" value="${obj ? (showupOf(obj)?.target || perWeekIn(obj.title) || perWeekIn(obj.measure) || "") : ""}"><span class="hint" style="margin:0">Adds a one-tap "I showed up" button, this week's count and your streak of weeks.</span></div>
+        <div class="field"><label for="f-show">Show-up target: days per week (optional)</label><input id="f-show" type="number" inputmode="numeric" min="0" max="7" step="1" placeholder="e.g. 4" value="${obj ? (showupOf(obj)?.target || perWeekIn(obj.title) || perWeekIn(obj.measure) || "") : ""}"><span class="hint" style="margin:0">Adds a one-tap check-in button, this week's count and your streak. Use 7 for every day.</span></div>
+        <div class="field"><label for="f-verb">Check-in button says "I ___ today" (optional)</label><input id="f-verb" maxlength="20" placeholder="${obj ? verbOf(obj) : "went"}" value="${esc(obj?.showup?.verb || "")}"></div>
         <div class="field"><span class="lbl">This season</span>${chipRow("f-mode", "mode", [["sprint", "Sprint"], ["maintain", "Maintain"], ["pause", "Pause"]], sheetCtx.mode)}</div>
         <div class="field"><label for="f-ms">Plan: 3–5 milestones, one per line</label><textarea id="f-ms" maxlength="600" placeholder="Sign up for a race&#10;Run 10k without stopping&#10;Long run of 18k">${esc((obj?.milestones || []).map(m => m.t).join("\n"))}</textarea></div>
         <div class="row2"><div class="field"><label for="f-target">Target date</label><input id="f-target" type="date" value="${esc(obj?.target)}"></div>
@@ -1181,7 +1194,8 @@ details.method dd { font-size: 15px; }
       const tt = +$("f-track").value || 0, oldEntries = obj?.tracker?.entries || [];
       const tracker = tt > 0 ? { target: tt, entries: oldEntries } : oldEntries.length ? { target: 0, entries: oldEntries } : null;
       const st = Math.min(7, Math.max(0, Math.round(+$("f-show").value || 0))), oldDays = obj?.showup?.days || [];
-      const showup = st > 0 ? { target: st, days: oldDays } : oldDays.length ? { target: 0, days: oldDays } : null;
+      const verb = $("f-verb").value.trim().toLowerCase().replace(/^i\s+/, "").replace(/\s+today$/, "");
+      const showup = st > 0 ? { target: st, days: oldDays, since: obj?.showup?.since || today(), ...(verb ? { verb } : {}) } : oldDays.length ? { target: 0, days: oldDays, since: obj?.showup?.since, ...(verb ? { verb } : {}) } : null;
       save("goals", id, { ...(obj ? stripId(obj) : {}), tracker, showup, title, measure: $("f-measure").value.trim(), why: $("f-why").value.trim(), mode: sheetCtx.mode, milestones, target: $("f-target").value || "", who: $("f-who").value.trim(), color: sheetCtx.color, createdAt: obj?.createdAt || new Date().toISOString() });
       toast(obj ? "Goal saved" : "Goal added");
     } else if (kind === "habit") {
@@ -1250,7 +1264,7 @@ details.method dd { font-size: 15px; }
     const hs = habitsOf(gid).filter(h => isSched(h, d));
     if (hs.length) { const done = { ...dayDoc(d).done }; hs.forEach(h => { if (on) done[h.id] = true; else delete done[h.id]; }); saveDay(d, { done }); }
     render();
-    if (on) { const n = weekCount(goalById(gid) || g, weekStart(d)), tg = showupOf(g).target; toast(n >= tg ? `${n}/${tg} this week. Week done!` : `Showed up · ${n}/${tg} this week`); }
+    if (on) { const n = weekCount(goalById(gid) || g, weekStart(d)), tg = showupOf(g).target; const gg = goalById(gid) || g; toast(tg >= 7 ? `${cap(verbOf(gg))} · ${dayStreak(gg)}-day streak` : n >= tg ? `${n}/${tg} this week. Week done!` : `${cap(verbOf(gg))} · ${n}/${tg} this week`); }
   }
   function saveShowup(g, days) {
     const showup = { ...g.showup, days };
